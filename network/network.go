@@ -215,5 +215,5 @@ func (m *Mirror) Handler1(conn1 net.Conn) {
 		log.Println(m.Name, "02", err.Error())
 		return
 	}
-
+	fmt.Println(m.Name, "(Handler1) Exit")
 }
