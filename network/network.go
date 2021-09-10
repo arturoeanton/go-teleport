@@ -208,12 +208,15 @@ func (m *Mirror) Handler1(conn1 net.Conn) {
 	go func() {
 		if _, err := io.Copy(conn1, conn2); err != nil {
 			log.Println(m.Name, "01", err.Error())
+			conn1.Close()
+			conn2.Close()
 			return
 		}
 	}()
 	if _, err := io.Copy(conn2, conn1); err != nil {
 		log.Println(m.Name, "02", err.Error())
-		return
 	}
+	conn1.Close()
+	conn2.Close()
 	fmt.Println(m.Name, "(Handler1) Exit")
 }
