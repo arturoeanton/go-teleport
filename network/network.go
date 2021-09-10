@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Mirror struct {
@@ -196,6 +197,7 @@ func (m *Mirror) Handler1(conn1 net.Conn) {
 			log.Println(m.Name, "(Handler1)(Pasive)", err.Error())
 			return
 		}
+		conn2.SetDeadline(time.Now().Add(time.Second * 10))
 		defer conn2.Close()
 
 	}
