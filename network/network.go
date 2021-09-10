@@ -200,6 +200,7 @@ func (m *Mirror) Handler1(conn1 net.Conn) {
 
 	}
 
+	exit := make(chan bool, 1)
 	if conn2 == nil {
 		log.Println(m.Name, "(Handler1) conn2 is nil")
 		return
@@ -208,27 +209,28 @@ func (m *Mirror) Handler1(conn1 net.Conn) {
 	go func() {
 		if _, err := io.Copy(conn1, conn2); err != nil {
 			log.Println(m.Name, "01", err.Error())
-			err = conn1.Close()
-			if err != nil {
-				log.Println(m.Name, "01-01", err.Error())
-			}
-			err = conn2.Close()
-			if err != nil {
-				log.Println(m.Name, "01-02", err.Error())
-			}
-			return
 		}
+		exit <- true
 	}()
-	if _, err := io.Copy(conn2, conn1); err != nil {
-		log.Println(m.Name, "02", err.Error())
-	}
+
+	go func() {
+		if _, err := io.Copy(conn2, conn1); err != nil {
+			log.Println(m.Name, "02", err.Error())
+		}
+		exit <- true
+	}()
+
+	<-exit
+
 	err = conn1.Close()
 	if err != nil {
-		log.Println(m.Name, "02-01", err.Error())
+		log.Println(m.Name, "C-01", err.Error())
 	}
+	log.Println(m.Name, "(Handler1) Close 1")
 	err = conn2.Close()
 	if err != nil {
-		log.Println(m.Name, "02-02", err.Error())
+		log.Println(m.Name, "C-02", err.Error())
 	}
-	fmt.Println(m.Name, "(Handler1) Exit")
+	log.Println(m.Name, "(Handler1) Close 2")
+
 }
