@@ -4,7 +4,7 @@ Teleport
 
 # Run in cloud
 ```
-   go run .  
+   go run .  -addr1 8081 -addr2 8082
 ```
 
 
