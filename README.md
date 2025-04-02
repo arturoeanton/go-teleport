@@ -69,6 +69,7 @@ USER 'SYSDBA' PASSWORD 'masterkey';
 
 Diagrama
 
+
 ```
 ┌────────────┐        TCP:8080         ┌──-──────────────┐        TCP:8082         ┌──────────────┐       TCP:30505       ┌────────────-┐
 │ ClienteSQL │ <---------------------> │ Mirror / Proxy  │ <---------------------> │ ClienteLocal │ <-------------------> │ FireBirdSQL │
