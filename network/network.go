@@ -157,8 +157,10 @@ func (m *Mirror) HandlerCmd(conn1 net.Conn) {
 		}
 		addr := conn1.RemoteAddr().String()
 		ip := strings.Split(addr, ":")[0]
-		fmt.Println(m.Name, "(HandlerCmd) Read", ip+string(buf[:nbytes]))
-		conn, err := net.Dial(m.Protocol, ip+string(buf[:nbytes]))
+		port := strings.Split(string(buf[:nbytes]), ":")[1]
+		fmt.Println(m.Name, "(HandlerCmd) >>>>>>>", string(buf[:nbytes]))
+		fmt.Println(m.Name, "(HandlerCmd) Read", ip+":"+port)
+		conn, err := net.Dial(m.Protocol, ip+":"+port)
 		if err != nil {
 			fmt.Println(m.Name, "(HandlerCmd) Dial", err.Error())
 			return
