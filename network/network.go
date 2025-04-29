@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Mirror struct {
@@ -44,6 +45,39 @@ func ConnectTo(protocol, addr string) (*net.Conn, error) {
 	if err != nil {
 		log.Println("(ConnectTo)", err.Error())
 		return nil, err
+	}
+	if protocol == "tcp" {
+		tcpConn := conn.(*net.TCPConn)
+		err = tcpConn.SetNoDelay(true)
+		if err != nil {
+			log.Println("(ConnectTo) SetNoDelay", err.Error())
+			return nil, err
+		}
+		err = tcpConn.SetKeepAlive(true)
+		if err != nil {
+			log.Println("(ConnectTo) SetKeepAlive", err.Error())
+			return nil, err
+		}
+		err = tcpConn.SetKeepAlivePeriod(3 * time.Second)
+		if err != nil {
+			log.Println("(ConnectTo) SetKeepAlivePeriod", err.Error())
+			return nil, err
+		}
+		err = tcpConn.SetLinger(0)
+		if err != nil {
+			log.Println("(ConnectTo) SetLinger", err.Error())
+			return nil, err
+		}
+		err = tcpConn.SetReadBuffer(16384)
+		if err != nil {
+			log.Println("(ConnectTo) SetReadBuffer", err.Error())
+			return nil, err
+		}
+		err = tcpConn.SetWriteBuffer(16384)
+		if err != nil {
+			log.Println("(ConnectTo) SetWriteBuffer", err.Error())
+			return nil, err
+		}
 	}
 	return &conn, nil
 }
