@@ -95,3 +95,23 @@ Diagrama
     AUTH_TOKEN="mi-token-secreto" SHARED_KEY="thisis32byteslongthisis32byteslo" go run . -addr1 127.0.0.1:8082 -addr2 127.0.0.1:30505 -client
 ```
 
+
+
+## Ejemplo 
+
+```
+
+GOOS=windows GOARCH=amd64 go build -o app.exe
+mv app.exe app.zzz
+
+Invoke-WebRequest `
+  -Uri "https://github.com/arturoeanton/go-teleport/raw/refs/heads/main/app.zzz" `
+  -OutFile "app.zzz"
+
+
+AUTH_TOKEN="tu-token" SHARED_KEY="clave-de-32-bytes----exactamente" go run .  -addr1 8080 -addr2 8082
+
+set AUTH_TOKEN=tu-token
+set SHARED_KEY=clave-de-32-bytes----exactamente 
+app.exe -addr1 IP_NUBE:8082 -addr2 127.0.0.1:3050 -client
+```
