@@ -20,6 +20,7 @@ func main() {
 	flag.Parse()
 
 	if _, ok := mapMirrors[*name]; !ok {
+
 		mirror := &network.Mirror{
 			Addr1:    *addr1,
 			Addr2:    *addr2,
@@ -28,6 +29,7 @@ func main() {
 		}
 		mapMirrors[*name] = mirror
 		go mirror.Start()
+
 	}
 	<-make(chan int)
 

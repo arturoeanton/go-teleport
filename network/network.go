@@ -137,23 +137,38 @@ func (m *Mirror) Start() {
 	}
 
 	if m.InOut1 == "out" {
-		log.Println(m.Name, "(Start) CMD ConnectTo", m.Addr1)
-		sconn, err := ConnectTo(m.Protocol, m.Addr1)
-		if err != nil {
-			log.Println(m.Name, "(Handler Conn1)", err.Error())
-			return
-		}
-		m.Conn1 = sconn
-		m.channelNewConnCmd <- *m.Conn1
 
-		if m.Client {
-			log.Println(m.Name, "(HandlerCmd) Client enviando AUTH_TOKEN")
-			_, e := sconn.WriteFrame(SecureFrame{Type: MsgTypeAuth, Payload: []byte(os.Getenv("AUTH_TOKEN"))})
-			if e != nil {
-				log.Println(m.Name, "(HandlerCmd) Error enviando AUTH_TOKEN:", e)
-				return
+		go func() {
+			for {
+				log.Println(m.Name, "(Start) CMD ConnectTo", m.Addr1)
+				sconn, err := ConnectTo(m.Protocol, m.Addr1)
+				if err != nil {
+					log.Println(m.Name, "(Handler Conn1)", err.Error())
+					time.Sleep(3 * time.Second) // retry
+					continue
+				}
+
+				m.Conn1 = sconn
+
+				// 🔐 Autenticación
+				if m.Client {
+					log.Println(m.Name, "(HandlerCmd) Client enviando AUTH_TOKEN")
+					_, err := sconn.WriteFrame(SecureFrame{
+						Type:    MsgTypeAuth,
+						Payload: []byte(os.Getenv("AUTH_TOKEN")),
+					})
+					if err != nil {
+						log.Println(m.Name, "(HandlerCmd) Error enviando AUTH_TOKEN:", err)
+						_ = sconn.Close()
+						time.Sleep(2 * time.Second)
+						continue
+					}
+				}
+
+				m.channelNewConnCmd <- *sconn
+				break // ✅ conexión y auth exitosa: salimos del loop
 			}
-		}
+		}()
 
 	}
 

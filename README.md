@@ -4,7 +4,7 @@ Teleport
 
 # Run in cloud
 ```
-   go run .  -addr1 8081 -addr2 8082
+   AUTH_TOKEN="mi-token-secreto" go run .  -addr1 8081 -addr2 8082
 ```
 
 
@@ -12,20 +12,20 @@ Teleport
 
 ```
     docker run --name some-nginx -d -p 8080:80 nginx
-    go run . -addr1 cloud.com:8082 -addr2 127.0.0.1:8080
+    AUTH_TOKEN="mi-token-secreto" go run . -addr1 cloud.com:8082 -addr2 127.0.0.1:8080 -client
 ```
 
 # Ejemplo Postgres 
 
 ## Run in cloud
 ```
-   go run .  -addr1 8080 -addr2 8082
+   AUTH_TOKEN="mi-token-secreto" go run .  -addr1 8080 -addr2 8082
 ```
 
 ## Run in local
 ```
     docker run -d --name pruebadb -p 5432:5432 -e POSTGRES_PASSWORD=qwerty123 postgres
-    go run . -addr1 64.23.223.85:8082 -addr2 127.0.0.1:5432
+    AUTH_TOKEN="mi-token-secreto" go run . -addr1 64.23.223.85:8082 -addr2 127.0.0.1:5432 -client
 ```
 
 Luego te conectas a  postgres://postgres:qwerty123@64.23.223.85:8080/postgres
@@ -48,7 +48,7 @@ Diagrama
 
 ## Run in cloud
 ```
-   go run .  -addr1 8080 -addr2 8082
+   AUTH_TOKEN="mi-token-secreto" go run .  -addr1 8080 -addr2 8082
 ```
 
 ## Run in local
@@ -60,7 +60,7 @@ Diagrama
     CREATE DATABASE '/firebird/data/mi_base.fdb' USER 'SYSDBA' PASSWORD 'masterkey';
     exit;
     quit;
-    go run . -addr1 64.23.223.85:8082 -addr2 127.0.0.1:30505
+    AUTH_TOKEN="mi-token-secreto" go run . -addr1 64.23.223.85:8082 -addr2 127.0.0.1:30505 -client
 ```
 
 Luego te conectas a  jdbc:firebirdsql://64.23.223.85:8080//firebird/data/mi_base.fdb
@@ -78,3 +78,20 @@ Diagrama
                                        │          8082)  │                         └──────────────┘
                                        └─-───────────────┘
 ```
+
+
+
+
+# Ejemplo FireBird  todo local
+```
+    docker run -d --name firebird25ss -p 30505:3050 -d -e ISC_PASSWORD=masterkey jacobalberty/firebird
+    docker exec -it firebird25ss /bin/bash
+    cd /usr/local/firebird/bin/
+    ./isql -u SYSDBA -p masterkey /firebird/data/mi_base.fdb
+    CREATE DATABASE '/firebird/data/mi_base.fdb' USER 'SYSDBA' PASSWORD 'masterkey';
+    exit;
+    quit;
+    AUTH_TOKEN="mi-token-secreto" SHARED_KEY="thisis32byteslongthisis32byteslo" go run .  -addr1 8080 -addr2 8082
+    AUTH_TOKEN="mi-token-secreto" SHARED_KEY="thisis32byteslongthisis32byteslo" go run . -addr1 127.0.0.1:8082 -addr2 127.0.0.1:30505 -client
+```
+
