@@ -5,26 +5,27 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
 type Mirror struct {
-	Name              string        `json:"name"`
-	Protocol          string        `json:"protocol"`
-	Addr1             string        `json:"addr1"`
-	Addr2             string        `json:"addr2"`
-	InOut1            string        `json:"in_out1"`
-	InOut2            string        `json:"in_out2"`
-	Conn1             *net.Conn     `json:"-"`
-	Conn2             *net.Conn     `json:"-"`
-	ChannelNewConn1   chan net.Conn `json:"-"`
-	ChannelNewConn2   chan net.Conn `json:"-"`
-	channelNewConnCmd chan net.Conn `json:"-"`
-	ChannelEventExit  chan bool     `json:"-"`
-	channelEventExit1 chan bool     `json:"-"`
-	channelEventExit2 chan bool     `json:"-"`
+	Name              string          `json:"name"`
+	Protocol          string          `json:"protocol"`
+	Client            bool            `json:"client"`
+	Addr1             string          `json:"addr1"`
+	Addr2             string          `json:"addr2"`
+	InOut1            string          `json:"in_out1"`
+	InOut2            string          `json:"in_out2"`
+	Conn1             *SecureConn     `json:"-"`
+	Conn2             *SecureConn     `json:"-"`
+	ChannelNewConn1   chan SecureConn `json:"-"`
+	ChannelNewConn2   chan SecureConn `json:"-"`
+	channelNewConnCmd chan SecureConn `json:"-"`
+	ChannelEventExit  chan bool       `json:"-"`
+	channelEventExit1 chan bool       `json:"-"`
+	channelEventExit2 chan bool       `json:"-"`
 }
 
 // https://gist.github.com/sevkin/96bdae9274465b2d09191384f86ef39d
@@ -40,49 +41,49 @@ func GetFreePort() (port int, err error) {
 	return
 }
 
-func ConnectTo(protocol, addr string) (*net.Conn, error) {
+func ConnectTo(protocol, addr string) (*SecureConn, error) {
 	conn, err := net.Dial(protocol, addr)
 	if err != nil {
 		log.Println("(ConnectTo)", err.Error())
 		return nil, err
 	}
+	sconn := NewSecureConn(conn)
 	if protocol == "tcp" {
-		tcpConn := conn.(*net.TCPConn)
-		err = tcpConn.SetNoDelay(true)
+		err = sconn.SetNoDelay(true)
 		if err != nil {
 			log.Println("(ConnectTo) SetNoDelay", err.Error())
 			return nil, err
 		}
-		err = tcpConn.SetKeepAlive(true)
+		err = sconn.SetKeepAlive(true)
 		if err != nil {
 			log.Println("(ConnectTo) SetKeepAlive", err.Error())
 			return nil, err
 		}
-		err = tcpConn.SetKeepAlivePeriod(3 * time.Second)
+		err = sconn.SetKeepAlivePeriod(3 * time.Second)
 		if err != nil {
 			log.Println("(ConnectTo) SetKeepAlivePeriod", err.Error())
 			return nil, err
 		}
-		err = tcpConn.SetLinger(0)
+		err = sconn.SetLinger(0)
 		if err != nil {
 			log.Println("(ConnectTo) SetLinger", err.Error())
 			return nil, err
 		}
-		err = tcpConn.SetReadBuffer(16384)
+		err = sconn.SetReadBuffer(16384)
 		if err != nil {
 			log.Println("(ConnectTo) SetReadBuffer", err.Error())
 			return nil, err
 		}
-		err = tcpConn.SetWriteBuffer(16384)
+		err = sconn.SetWriteBuffer(16384)
 		if err != nil {
 			log.Println("(ConnectTo) SetWriteBuffer", err.Error())
 			return nil, err
 		}
 	}
-	return &conn, nil
+	return sconn, nil
 }
 
-func AcceptConn(network, addr string, channelNewConn chan net.Conn, channelEventExit chan bool) {
+func AcceptConn(network, addr string, channelNewConn chan SecureConn, channelEventExit chan bool) {
 	listener, err := net.Listen(network, addr)
 	if err != nil {
 		log.Println(err)
@@ -97,7 +98,7 @@ func AcceptConn(network, addr string, channelNewConn chan net.Conn, channelEvent
 				break
 			}
 			defer conn.Close()
-			channelNewConn <- conn
+			channelNewConn <- *NewSecureConn(conn)
 		}
 	}()
 	<-channelEventExit
@@ -107,9 +108,9 @@ func AcceptConn(network, addr string, channelNewConn chan net.Conn, channelEvent
 func (m *Mirror) Start() {
 	go m.Handler()
 
-	m.ChannelNewConn1 = make(chan net.Conn)
-	m.ChannelNewConn2 = make(chan net.Conn)
-	m.channelNewConnCmd = make(chan net.Conn)
+	m.ChannelNewConn1 = make(chan SecureConn)
+	m.ChannelNewConn2 = make(chan SecureConn)
+	m.channelNewConnCmd = make(chan SecureConn)
 	m.ChannelEventExit = make(chan bool, 1)
 	m.channelEventExit1 = make(chan bool, 1)
 	m.channelEventExit2 = make(chan bool, 1)
@@ -136,31 +137,43 @@ func (m *Mirror) Start() {
 	}
 
 	if m.InOut1 == "out" {
-		fmt.Println(m.Name, "(Start) CMD ConnectTo", m.Addr1)
-		m.Conn1, err = ConnectTo(m.Protocol, m.Addr1)
+		log.Println(m.Name, "(Start) CMD ConnectTo", m.Addr1)
+		sconn, err := ConnectTo(m.Protocol, m.Addr1)
 		if err != nil {
 			log.Println(m.Name, "(Handler Conn1)", err.Error())
 			return
 		}
+		m.Conn1 = sconn
 		m.channelNewConnCmd <- *m.Conn1
+
+		if m.Client {
+			log.Println(m.Name, "(HandlerCmd) Client enviando AUTH_TOKEN")
+			_, e := sconn.WriteFrame(SecureFrame{Type: MsgTypeAuth, Payload: []byte(os.Getenv("AUTH_TOKEN"))})
+			if e != nil {
+				log.Println(m.Name, "(HandlerCmd) Error enviando AUTH_TOKEN:", e)
+				return
+			}
+		}
+
 	}
 
 }
 
 func (m *Mirror) Handler() {
-	fmt.Println("(Handler) Start")
+	log.Println("(Handler) Start")
 	for {
 		select {
 		case connCmd := <-m.channelNewConnCmd:
-			fmt.Println(m.Name, "(Handler) New ConnCMD")
-			go m.HandlerCmd(connCmd)
-		case conn1 := <-m.ChannelNewConn1:
-			fmt.Println(m.Name, "(Handler) New Conn1")
-			go m.Handler1(conn1)
+			log.Println(m.Name, "(Handler) New ConnCMD")
+			go m.HandlerCmd(&connCmd)
+		case sconn1 := <-m.ChannelNewConn1:
+			log.Println(m.Name, "(Handler) New Conn1")
+			go m.Handler1(&sconn1)
 
 		case conn2 := <-m.ChannelNewConn2:
 			m.Conn2 = &conn2
-			fmt.Println(m.Name, "(Handler) New Conn2")
+			log.Println(m.Name, "(Handler) New Conn2")
+			m.Conn2.Read(nil)
 
 		case <-m.ChannelEventExit:
 			fmt.Println("(Handler) Exit")
@@ -181,92 +194,120 @@ func (m *Mirror) Handler() {
 	}
 }
 
-func (m *Mirror) HandlerCmd(conn1 net.Conn) {
+// Dentro de HandlerCmd añadir trazabilidad
+func (m *Mirror) HandlerCmd(conn1 *SecureConn) {
+	log.Println(m.Name, "(HandlerCmd) Start - Client:", m.Client)
+
 	for {
-		buf := make([]byte, 1024)
-		nbytes, err := conn1.Read(buf)
+		log.Printf("%s (HandlerCmd) Esperando mensaje...", m.Name)
+		msg, err := ReceiveControlMessage(conn1)
 		if err != nil {
-			fmt.Println(m.Name, "(HandlerCmd) Read", err.Error())
+			log.Println(m.Name, "(HandlerCmd) Error decodificando control message:", err)
 			return
 		}
-		addr := conn1.RemoteAddr().String()
-		ip := strings.Split(addr, ":")[0]
-		port := strings.Split(string(buf[:nbytes]), ":")[1]
-		fmt.Println(m.Name, "(HandlerCmd) >>>>>>>", string(buf[:nbytes]))
+		ip := conn1.RemoteAddr().(*net.TCPAddr).IP.String()
+		port := strconv.Itoa(msg.Port)
+
 		fmt.Println(m.Name, "(HandlerCmd) Read", ip+":"+port)
+
 		conn, err := net.Dial(m.Protocol, ip+":"+port)
 		if err != nil {
 			fmt.Println(m.Name, "(HandlerCmd) Dial", err.Error())
 			return
 		}
-		m.ChannelNewConn1 <- conn
+		sconn := NewSecureConn(conn)
+		m.ChannelNewConn1 <- *sconn
 	}
 }
 
-func (m *Mirror) Handler1(conn1 net.Conn) {
-	fmt.Println(m.Name, "(Handler) Start - ", m.Name)
-	var err error
-	var conn2 net.Conn
-	//conn1 := *m.Conn1
+func (m *Mirror) Handler1(sconn1 *SecureConn) {
+	fmt.Println(m.Name, "(Handler1) Start -", m.Name)
+	var sconn2 *SecureConn
 
+	// Si ya tenemos Conn2
 	if m.Conn2 != nil {
-		conn2 = *m.Conn2
+		sconn2 = m.Conn2
 	}
 
+	// OUT: nos conectamos directamente
 	if m.InOut2 == "out" {
-		conn2, err = net.Dial(m.Protocol, m.Addr2)
+		rawConn, err := net.Dial(m.Protocol, m.Addr2)
 		if err != nil {
-			log.Println(m.Name, "(Handler1)", err.Error())
+			log.Println(m.Name, "(Handler1) Dial error:", err)
 			return
 		}
+		sconn2 = NewSecureConn(rawConn)
+
 	} else {
+		// IN: esperamos conexión entrante luego de enviar control message
 		port, _ := GetFreePort()
-		fmt.Println(m.Name, "(Handler1) port:", port)
+		log.Printf("%s (Handler1) puerto dinámico: %d", m.Name, port)
 
-		(*m.Conn2).Write([]byte(":" + strconv.Itoa(port))) // deberia ser json y structurarlo
-
-		listener, _ := net.Listen(m.Protocol, ":"+strconv.Itoa(port))
-		fmt.Println(m.Name, "(Handler1) listener ... :"+strconv.Itoa(port))
-		conn2, err = listener.Accept()
-		if err != nil {
-			log.Println(m.Name, "(Handler1)(Pasive)", err.Error())
+		// Enviamos mensaje de control cifrado
+		if err := SendControlMessage(m.Conn2, port); err != nil {
+			log.Println(m.Name, "(Handler1) Error al enviar control message:", err)
 			return
 		}
-		defer conn2.Close()
+		log.Printf("%s (Handler1) Mensaje enviado a Conn2", m.Name)
 
+		listener, err := net.Listen(m.Protocol, fmt.Sprintf(":%d", port))
+		if err != nil {
+			log.Println(m.Name, "(Handler1) Error escuchando:", err)
+			return
+		}
+		defer listener.Close()
+
+		conn2, err := listener.Accept()
+		if err != nil {
+			log.Println(m.Name, "(Handler1) Error aceptando:", err)
+			return
+		}
+		sconn2 = NewSecureConn(conn2) // ✅ usa constructor con buffer inicial
+		//sconn2 = NewSecureConn(conn2)
 	}
 
-	exit := make(chan bool, 1)
-	if conn2 == nil {
-		log.Println(m.Name, "(Handler1) conn2 is nil")
+	// Validaciones defensivas
+	if sconn1 == nil || sconn2 == nil {
+		log.Println(m.Name, "(Handler1) Una de las conexiones es nil")
 		return
 	}
+	log.Printf("%s (Handler1) sconn1: %T, sconn2: %T", m.Name, sconn1, sconn2)
+
+	// Canal de sincronización para cerrar cuando termine
+	exit := make(chan bool, 2)
 
 	go func() {
-		if _, err := io.Copy(conn1, conn2); err != nil {
-			log.Println(m.Name, "01", err.Error())
+		log.Println(m.Name, "(Handler1) Iniciando pipe → A", m.Client)
+		if m.Client {
+			if _, err := io.Copy(sconn1, sconn2.Conn); err != nil {
+				log.Println(m.Name, "pipe A error:", err)
+			}
+		} else {
+			if _, err := io.Copy(sconn1.Conn, sconn2); err != nil {
+				log.Println(m.Name, "pipe A error:", err)
+			}
 		}
 		exit <- true
 	}()
 
 	go func() {
-		if _, err := io.Copy(conn2, conn1); err != nil {
-			log.Println(m.Name, "02", err.Error())
+		log.Println(m.Name, "(Handler1) Iniciando pipe → A", m.Client)
+		if m.Client {
+			if _, err := io.Copy(sconn2.Conn, sconn1); err != nil {
+				log.Println(m.Name, "pipe B error:", err)
+			}
+		} else {
+			if _, err := io.Copy(sconn2, sconn1.Conn); err != nil {
+				log.Println(m.Name, "pipe B error:", err)
+			}
 		}
 		exit <- true
 	}()
 
-	<-exit
+	<-exit // cerramos si cualquiera falla
 
-	err = conn1.Close()
-	if err != nil {
-		log.Println(m.Name, "C-01", err.Error())
-	}
-	log.Println(m.Name, "(Handler1) Close 1")
-	err = conn2.Close()
-	if err != nil {
-		log.Println(m.Name, "C-02", err.Error())
-	}
-	log.Println(m.Name, "(Handler1) Close 2")
-
+	log.Println(m.Name, "(Handler1) Cerrando conexiones")
+	_ = sconn1.Close()
+	_ = sconn2.Close()
+	log.Println(m.Name, "(Handler1) Close completo")
 }
